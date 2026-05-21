@@ -1,0 +1,92 @@
+# Nginx configuration for llm_oriagent (Open WebUI)
+# Place this file in /etc/nginx/sites-available/llm_oriagent
+# And symlink it to /etc/nginx/sites-enabled/llm_oriagent
+
+server {
+    listen 8090;
+    server_name localhost; # Replace with your domain (e.g., chat.oriagent.com) if available
+
+    # Maximum file upload size (useful for importing models/files/documents)
+    client_max_body_size 100M;
+
+    # Increase timeouts for long-running AI inferences
+    proxy_connect_timeout 1800;
+    proxy_send_timeout 1800;
+    proxy_read_timeout 1800;
+    send_timeout 1800;
+
+    # Backend WebSocket / Socket.io reverse proxy
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8089/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Keep WebSockets alive
+        proxy_read_timeout 86400;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:8089/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Keep connection alive
+        proxy_read_timeout 86400;
+    }
+
+    # Main Application Reverse Proxy
+    location / {
+        proxy_pass http://127.0.0.1:8089/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# OPTIONAL SSL BLOCK FOR DOMAIN ROUTING
+# (If you decide to deploy on a subdomain like chat.oriagent.com, 
+# you can use Certbot to automatically configure this block)
+#
+# server {
+#     server_name chat.oriagent.com;
+#     listen 80;
+#     return 301 https://$host$request_uri;
+# }
+#
+# server {
+#     server_name chat.oriagent.com;
+#     listen 443 ssl;
+#     
+#     client_max_body_size 100M;
+#     proxy_connect_timeout 1800;
+#     proxy_send_timeout 1800;
+#     proxy_read_timeout 1800;
+#     send_timeout 1800;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:8089/;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+#     
+#     # SSL config managed by Certbot
+# }
