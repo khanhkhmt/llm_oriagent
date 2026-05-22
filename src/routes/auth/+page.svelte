@@ -190,6 +190,10 @@
 			await signInHandler();
 		} else {
 			onboarding = $config?.onboarding ?? false;
+			// Support ?signup=1 from landing page CTA
+			if ($page.url.searchParams.get('signup') === '1' && $config?.features?.enable_signup) {
+				mode = $config?.features.enable_ldap ? 'ldap' : 'signup';
+			}
 		}
 	});
 </script>
@@ -238,13 +242,15 @@
 						<div class=" sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
 							{#if $config?.metadata?.auth_logo_position === 'center'}
 								<div class="flex justify-center mb-6">
-									<img
-										id="logo"
-										crossorigin="anonymous"
-										src="{WEBUI_BASE_URL}/static/favicon.png"
-										class="size-24 rounded-full"
-										alt="{$WEBUI_NAME} logo"
-									/>
+									<a href="/" title="Về trang chủ">
+										<img
+											id="logo"
+											crossorigin="anonymous"
+											src="{WEBUI_BASE_URL}/static/favicon.png"
+											class="size-24 rounded-full hover:opacity-80 transition-opacity"
+											alt="{$WEBUI_NAME} logo"
+										/>
+									</a>
 								</div>
 							{/if}
 							<form

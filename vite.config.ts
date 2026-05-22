@@ -4,6 +4,11 @@ import { defineConfig } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
+	server: {
+		watch: {
+			ignored: ['**/backend/.venv/**', '**/node_modules/**']
+		}
+	},
 	plugins: [
 		sveltekit(),
 		viteStaticCopy({
