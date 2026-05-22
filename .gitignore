@@ -24,6 +24,9 @@ ecosystem.config.js
 ecosystem.config.cjs
 ecosystem.config.json
 
+# Shell scripts (contains deployment/setup credentials)
+*.sh
+
 # SSL Certificates, Private Keys, and SSH directories
 *.pem
 *.key
