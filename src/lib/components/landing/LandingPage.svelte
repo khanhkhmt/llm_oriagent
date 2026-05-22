@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { config, WEBUI_NAME } from '$lib/stores';
+	import { config, WEBUI_NAME, theme } from '$lib/stores';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 	import { getContext } from 'svelte';
 
@@ -40,6 +40,42 @@
 	];
 
 	$: googleOAuthEnabled = !!$config?.oauth?.providers?.google;
+
+	$: isDark = $theme === 'dark' || $theme === 'oled-dark' || ($theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+	$: iconSrc = isDark ? `${WEBUI_BASE_URL}/static/icon-dark.svg` : `${WEBUI_BASE_URL}/static/icon-light.svg`;
+
+	const toggleTheme = () => {
+		const currentTheme = $theme;
+		let nextTheme = 'dark';
+		if (currentTheme === 'dark' || currentTheme === 'oled-dark') {
+			nextTheme = 'light';
+		} else if (currentTheme === 'light') {
+			nextTheme = 'dark';
+		} else {
+			const prefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+			nextTheme = prefersDark ? 'light' : 'dark';
+		}
+
+		theme.set(nextTheme);
+		localStorage.setItem('theme', nextTheme);
+
+		const themes = ['dark', 'light', 'oled-dark'];
+		themes
+			.filter((e) => e !== nextTheme)
+			.forEach((e) => {
+				e.split(' ').forEach((cls) => document.documentElement.classList.remove(cls));
+			});
+		nextTheme.split(' ').forEach((cls) => document.documentElement.classList.add(cls));
+
+		const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+		if (metaThemeColor) {
+			metaThemeColor.setAttribute('content', nextTheme === 'light' ? '#ffffff' : '#171717');
+		}
+
+		if (typeof window !== 'undefined' && window.applyTheme) {
+			window.applyTheme();
+		}
+	};
 </script>
 
 <div class="min-h-screen bg-white dark:bg-gray-900 flex flex-col">
@@ -48,16 +84,30 @@
 		class="fixed top-0 left-0 right-0 z-50 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md"
 	>
 		<div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-			<!-- Logo -->
-			<a href="/" class="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-				<img src="/favicon.png" alt="logo" class="size-7 rounded-lg" on:error={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-				<span class="font-semibold text-gray-900 dark:text-white text-base">
-					{$WEBUI_NAME || 'Open WebUI'}
-				</span>
+			<a href="/" class="flex items-center gap-2 hover:opacity-90 transition-opacity">
+				<img src="/static/logo-light.svg" alt="OriAgent" class="h-6 w-auto block dark:hidden" />
+				<img src="/static/logo-dark.svg" alt="OriAgent" class="h-6 w-auto hidden dark:block" />
 			</a>
 
 			<!-- Nav buttons -->
 			<div class="flex items-center gap-2">
+				<!-- Theme toggle -->
+				<button
+					aria-label="Toggle Theme"
+					class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+					on:click={toggleTheme}
+				>
+					{#if isDark}
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+							<path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM4.343 4.343a.75.75 0 0 1 1.06 0l1.06 1.061a.75.75 0 1 1-1.06 1.06L4.343 5.404a.75.75 0 0 1 0-1.06ZM13.536 13.536a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.061l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2 10ZM15 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 15 10ZM4.343 15.657a.75.75 0 0 1 0-1.06l1.06-1.061a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM13.536 6.464a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM10 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" />
+						</svg>
+					{:else}
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+							<path fill-rule="evenodd" d="M7.451 1.019a.75.75 0 0 1 .857.085 7.5 7.5 0 0 0 10.588 10.588.75.75 0 0 1 .857.857A9 9 0 1 1 6.594 1.162a.75.75 0 0 1 .857-.143Z" clip-rule="evenodd" />
+						</svg>
+					{/if}
+				</button>
+
 				<a
 					href="/auth"
 					class="px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"

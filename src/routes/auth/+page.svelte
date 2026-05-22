@@ -18,7 +18,7 @@
 	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
-	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
+	import { WEBUI_NAME, config, user, socket, theme } from '$lib/stores';
 
 	import { generateInitialsImage, canvasPixelTest, getUserTimezone } from '$lib/utils';
 
@@ -142,27 +142,12 @@
 
 	let onboarding = false;
 
+	$: isDark = $theme === 'dark' || $theme === 'oled-dark' || ($theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+	$: logoSrc = isDark ? `${WEBUI_BASE_URL}/static/logo-dark.svg` : `${WEBUI_BASE_URL}/static/logo-light.svg`;
+	$: iconSrc = isDark ? `${WEBUI_BASE_URL}/static/icon-dark.svg` : `${WEBUI_BASE_URL}/static/icon-light.svg`;
+
 	async function setLogoImage() {
-		await tick();
-		const logo = document.getElementById('logo');
-
-		if (logo) {
-			const isDarkMode = document.documentElement.classList.contains('dark');
-
-			if (isDarkMode) {
-				const darkImage = new Image();
-				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-
-				darkImage.onload = () => {
-					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
-				};
-
-				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)'; // Invert image if favicon-dark.png is missing
-				};
-			}
-		}
+		// Handled reactively by Svelte
 	}
 
 	onMount(async () => {
@@ -246,8 +231,8 @@
 										<img
 											id="logo"
 											crossorigin="anonymous"
-											src="{WEBUI_BASE_URL}/static/favicon.png"
-											class="size-24 rounded-full hover:opacity-80 transition-opacity"
+											src={logoSrc}
+											class="h-12 w-auto hover:opacity-80 transition-opacity"
 											alt="{$WEBUI_NAME} logo"
 										/>
 									</a>
@@ -594,17 +579,10 @@
 
 		{#if !$config?.metadata?.auth_logo_position}
 			<div class="fixed m-10 z-50">
-				<div class="flex space-x-2">
-					<div class=" self-center">
-						<img
-							id="logo"
-							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class=" w-6 rounded-full"
-							alt=""
-						/>
-					</div>
-				</div>
+				<a href="/" class="flex items-center gap-2 hover:opacity-90 transition-opacity">
+					<img src="/static/logo-light.svg" alt="OriAgent" class="h-6 w-auto block dark:hidden" />
+					<img src="/static/logo-dark.svg" alt="OriAgent" class="h-6 w-auto hidden dark:block" />
+				</a>
 			</div>
 		{/if}
 	{/if}

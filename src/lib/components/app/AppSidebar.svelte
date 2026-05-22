@@ -2,8 +2,12 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import { WEBUI_BASE_URL } from '$lib/constants';
+	import { theme } from '$lib/stores';
 
 	let selected = '';
+
+	$: isDark = $theme === 'dark' || $theme === 'oled-dark' || ($theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+	$: iconSrc = isDark ? `${WEBUI_BASE_URL}/static/icon-dark.svg` : `${WEBUI_BASE_URL}/static/icon-light.svg`;
 </script>
 
 <nav
@@ -30,8 +34,8 @@
 				}}
 			>
 				<img
-					src="{WEBUI_BASE_URL}/static/splash.png"
-					class="size-11 dark:invert p-0.5"
+					src={iconSrc}
+					class="size-10 p-0.5"
 					alt="logo"
 					draggable="false"
 				/>
@@ -55,7 +59,7 @@
 			}}
 		>
 			<img
-				src="{WEBUI_BASE_URL}/static/favicon.png"
+				src={iconSrc}
 				class="size-10 {selected === '' ? 'rounded-2xl' : 'rounded-full'}"
 				alt="logo"
 				draggable="false"

@@ -466,7 +466,6 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user), db: AsyncSes
 async def get_model_profile_image(
     request: Request,
     id: str,
-    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
     profile_image_url = None
@@ -489,6 +488,10 @@ async def get_model_profile_image(
             if arena_model.get('id') == id:
                 profile_image_url = arena_model.get('meta', {}).get('profile_image_url')
                 break
+
+    # FORCE SANITIZATION: If database holds historical paths, force redirect to the cute bot avatar
+    if profile_image_url and any(x in profile_image_url for x in ['favicon.png', 'icon.svg', 'favicon.ico']):
+        profile_image_url = '/static/bot-avatar.svg'
 
     if profile_image_url:
         if profile_image_url.startswith('http'):
@@ -527,7 +530,7 @@ async def get_model_profile_image(
                 )
 
     return RedirectResponse(
-        url='/static/favicon.png',
+        url='/static/bot-avatar.svg',
         status_code=status.HTTP_302_FOUND,
     )
 

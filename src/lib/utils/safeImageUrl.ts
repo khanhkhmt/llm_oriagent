@@ -1,6 +1,6 @@
 import { WEBUI_BASE_URL } from '$lib/constants';
 
-const PLACEHOLDER_IMAGE = '/favicon.png';
+const PLACEHOLDER_IMAGE = '/static/icon.svg';
 
 /**
  * Validates an image URL against an allowlist of safe patterns and returns

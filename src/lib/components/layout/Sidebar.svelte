@@ -29,7 +29,8 @@
 		selectedFolder,
 		WEBUI_NAME,
 		sidebarWidth,
-		activeChatIds
+		activeChatIds,
+		theme
 	} from '$lib/stores';
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
 
@@ -674,6 +675,43 @@
 	};
 
 	const isWindows = /Windows/i.test(navigator.userAgent);
+
+	$: isDark = $theme === 'dark' || $theme === 'oled-dark' || ($theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+	$: iconSrc = isDark ? `${WEBUI_BASE_URL}/static/icon-dark.svg` : `${WEBUI_BASE_URL}/static/icon-light.svg`;
+
+	const toggleTheme = () => {
+		const currentTheme = $theme;
+		let nextTheme = 'dark';
+		if (currentTheme === 'dark' || currentTheme === 'oled-dark') {
+			nextTheme = 'light';
+		} else if (currentTheme === 'light') {
+			nextTheme = 'dark';
+		} else {
+			const prefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+			nextTheme = prefersDark ? 'light' : 'dark';
+		}
+
+		theme.set(nextTheme);
+		localStorage.setItem('theme', nextTheme);
+
+		let themeToApply = nextTheme;
+		const themes = ['dark', 'light', 'oled-dark'];
+		themes
+			.filter((e) => e !== themeToApply)
+			.forEach((e) => {
+				e.split(' ').forEach((cls) => document.documentElement.classList.remove(cls));
+			});
+		themeToApply.split(' ').forEach((cls) => document.documentElement.classList.add(cls));
+
+		const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+		if (metaThemeColor) {
+			metaThemeColor.setAttribute('content', nextTheme === 'light' ? '#ffffff' : '#171717');
+		}
+
+		if (typeof window !== 'undefined' && window.applyTheme) {
+			window.applyTheme();
+		}
+	};
 </script>
 
 <ArchivedChatsModal
@@ -802,7 +840,7 @@
 					>
 						<div class=" self-center flex items-center justify-center size-9">
 							<img
-								src="{WEBUI_BASE_URL}/static/favicon.png"
+								src={iconSrc}
 								class="sidebar-new-chat-icon size-6 rounded-full group-hover:hidden"
 								alt=""
 							/>
@@ -935,7 +973,24 @@
 
 		<div>
 			<div>
-				<div class=" py-2 flex justify-center items-center">
+				<div class=" py-2 flex flex-col justify-center items-center gap-2">
+					<Tooltip content={isDark ? $i18n.t('Light Mode') : $i18n.t('Dark Mode')} placement="right">
+						<button
+							aria-label="Toggle Theme"
+							class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition cursor-pointer text-gray-500 dark:text-gray-400 p-2"
+							on:click={toggleTheme}
+						>
+							{#if isDark}
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+									<path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM4.343 4.343a.75.75 0 0 1 1.06 0l1.06 1.061a.75.75 0 1 1-1.06 1.06L4.343 5.404a.75.75 0 0 1 0-1.06ZM13.536 13.536a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.061l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2 10ZM15 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 15 10ZM4.343 15.657a.75.75 0 0 1 0-1.06l1.06-1.061a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM13.536 6.464a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM10 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" />
+								</svg>
+							{:else}
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+									<path fill-rule="evenodd" d="M7.451 1.019a.75.75 0 0 1 .857.085 7.5 7.5 0 0 0 10.588 10.588.75.75 0 0 1 .857.857A9 9 0 1 1 6.594 1.162a.75.75 0 0 1 .857-.143Z" clip-rule="evenodd" />
+								</svg>
+							{/if}
+						</button>
+					</Tooltip>
 					{#if $user !== undefined && $user !== null}
 						<UserMenu
 							role={$user?.role}
@@ -1011,7 +1066,7 @@
 				>
 					<img
 						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
+						src={iconSrc}
 						class="sidebar-new-chat-icon size-6 rounded-full"
 						alt=""
 					/>
@@ -1595,45 +1650,69 @@
 					class=" sidebar-bg-gradient-to-t bg-linear-to-t from-gray-50 dark:from-gray-950 to-transparent from-50% pointer-events-none absolute inset-0 -z-10 -mt-6"
 				></div>
 				<div class="flex flex-col font-primary">
-					{#if $user !== undefined && $user !== null}
-						<UserMenu
-							role={$user?.role}
-							profile={$config?.features?.enable_user_status ?? true}
-							showActiveUsers={false}
-							className="w-[calc(var(--sidebar-width)-1rem)]"
-							on:show={(e) => {
-								if (e.detail === 'archived-chat') {
-									showArchivedChats.set(true);
-								}
-							}}
-						>
-							<div
-								class=" flex items-center rounded-2xl py-2 px-1.5 w-full hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition"
-							>
-								<div class=" self-center mr-3 relative">
-									<img
-										src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
-										class=" size-7 object-cover rounded-full"
-										alt={$i18n.t('Open User Profile Menu')}
-										aria-label={$i18n.t('Open User Profile Menu')}
-									/>
+					<div class="flex items-center justify-between gap-1 w-full">
+						{#if $user !== undefined && $user !== null}
+							<div class="flex-1 min-w-0">
+								<UserMenu
+									role={$user?.role}
+									profile={$config?.features?.enable_user_status ?? true}
+									showActiveUsers={false}
+									className="w-[calc(var(--sidebar-width)-3.5rem)]"
+									on:show={(e) => {
+										if (e.detail === 'archived-chat') {
+											showArchivedChats.set(true);
+										}
+									}}
+								>
+									<div
+										class=" flex items-center rounded-2xl py-2 px-1.5 hover:bg-gray-100/50 dark:hover:bg-gray-900/50 transition w-full"
+									>
+										<div class=" self-center mr-3 relative flex-shrink-0">
+											<img
+												src={`${WEBUI_API_BASE_URL}/users/${$user?.id}/profile/image`}
+												class=" size-7 object-cover rounded-full"
+												alt={$i18n.t('Open User Profile Menu')}
+												aria-label={$i18n.t('Open User Profile Menu')}
+											/>
 
-									{#if $config?.features?.enable_user_status}
-										<div class="absolute -bottom-0.5 -right-0.5">
-											<span class="relative flex size-2.5">
-												<span
-													class="relative inline-flex size-2.5 rounded-full {true
-														? 'bg-green-500'
-														: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
-												></span>
-											</span>
+											{#if $config?.features?.enable_user_status}
+												<div class="absolute -bottom-0.5 -right-0.5">
+													<span class="relative flex size-2.5">
+														<span
+															class="relative inline-flex size-2.5 rounded-full {true
+																? 'bg-green-500'
+																: 'bg-gray-300 dark:bg-gray-700'} border-2 border-white dark:border-gray-900"
+														></span>
+													</span>
+												</div>
+											{/if}
 										</div>
-									{/if}
-								</div>
-								<div class=" self-center font-medium">{$user?.name}</div>
+										<div class=" self-center font-medium truncate">{$user?.name}</div>
+									</div>
+								</UserMenu>
 							</div>
-						</UserMenu>
-					{/if}
+						{/if}
+
+						<div class="flex-shrink-0">
+							<Tooltip content={isDark ? $i18n.t('Light Mode') : $i18n.t('Dark Mode')} placement="top">
+								<button
+									aria-label="Toggle Theme"
+									class="flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition cursor-pointer text-gray-500 dark:text-gray-400 p-2"
+									on:click={toggleTheme}
+								>
+									{#if isDark}
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+											<path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM4.343 4.343a.75.75 0 0 1 1.06 0l1.06 1.061a.75.75 0 1 1-1.06 1.06L4.343 5.404a.75.75 0 0 1 0-1.06ZM13.536 13.536a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.061l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2 10ZM15 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 15 10ZM4.343 15.657a.75.75 0 0 1 0-1.06l1.06-1.061a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM13.536 6.464a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM10 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" />
+										</svg>
+									{:else}
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+											<path fill-rule="evenodd" d="M7.451 1.019a.75.75 0 0 1 .857.085 7.5 7.5 0 0 0 10.588 10.588.75.75 0 0 1 .857.857A9 9 0 1 1 6.594 1.162a.75.75 0 0 1 .857-.143Z" clip-rule="evenodd" />
+										</svg>
+									{/if}
+								</button>
+							</Tooltip>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>

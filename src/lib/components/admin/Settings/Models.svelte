@@ -597,7 +597,7 @@
 											alt="modelfile profile"
 											class=" rounded-full w-full h-auto object-cover"
 											on:error={(e) => {
-												e.target.src = '/favicon.png';
+												e.target.src = '/static/bot-avatar.svg';
 											}}
 										/>
 									</div>

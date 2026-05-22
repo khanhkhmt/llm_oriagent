@@ -3,7 +3,7 @@
 	import { safeImageUrl } from '$lib/utils/safeImageUrl';
 
 	export let className = 'size-8';
-	export let src = `${WEBUI_BASE_URL}/static/favicon.png`;
+	export let src = `${WEBUI_BASE_URL}/static/icon.svg`;
 </script>
 
 <img

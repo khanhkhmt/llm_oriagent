@@ -61,7 +61,7 @@
 								alt="logo"
 								draggable="false"
 								on:error={(e) => {
-									e.currentTarget.src = '/favicon.png';
+									e.currentTarget.src = '/static/bot-avatar.svg';
 								}}
 							/>
 						</Tooltip>

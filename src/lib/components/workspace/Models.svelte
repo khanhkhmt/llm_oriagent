@@ -604,7 +604,7 @@
 												loading="lazy"
 												decoding="async"
 												on:error={(e) => {
-													e.target.src = '/favicon.png';
+													e.target.src = '/static/bot-avatar.svg';
 												}}
 											/>
 										</div>
