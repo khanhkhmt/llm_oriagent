@@ -1237,47 +1237,31 @@ async def update_ldap_config(request: Request, form_data: LdapConfigForm, user=D
 ############################
 
 
+from open_webui.models.users import ApiKeyModel
+
 # create api key
-@router.post('/api_key', response_model=ApiKey)
+@router.post('/api_keys', response_model=ApiKeyModel)
 async def generate_api_key(
     request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_async_session)
 ):
-    if not request.app.state.config.ENABLE_API_KEYS or (
-        user.role != 'admin'
-        and not await has_permission(user.id, 'features.api_keys', request.app.state.config.USER_PERMISSIONS)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERROR_MESSAGES.API_KEY_CREATION_NOT_ALLOWED,
-        )
-
     api_key = create_api_key()
-    success = await Users.update_user_api_key_by_id(user.id, api_key, db=db)
-
-    if success:
-        return {
-            'api_key': api_key,
-        }
+    new_key = await Users.create_user_api_key_by_id(user.id, api_key, db=db)
+    if new_key:
+        return new_key
     else:
         raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_API_KEY_ERROR)
 
 
 # delete api key
-@router.delete('/api_key', response_model=bool)
-async def delete_api_key(user=Depends(get_current_user), db: AsyncSession = Depends(get_async_session)):
-    return await Users.delete_user_api_key_by_id(user.id, db=db)
+@router.delete('/api_keys/{key_id}', response_model=bool)
+async def delete_api_key(key_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_async_session)):
+    return await Users.delete_user_api_key_by_key_id(user.id, key_id, db=db)
 
 
-# get api key
-@router.get('/api_key', response_model=ApiKey)
-async def get_api_key(user=Depends(get_current_user), db: AsyncSession = Depends(get_async_session)):
-    api_key = await Users.get_user_api_key_by_id(user.id, db=db)
-    if api_key:
-        return {
-            'api_key': api_key,
-        }
-    else:
-        raise HTTPException(404, detail=ERROR_MESSAGES.API_KEY_NOT_FOUND)
+# get api keys
+@router.get('/api_keys', response_model=list[ApiKeyModel])
+async def get_api_keys(user=Depends(get_current_user), db: AsyncSession = Depends(get_async_session)):
+    return await Users.get_user_api_keys_by_id(user.id, db=db)
 
 
 ############################

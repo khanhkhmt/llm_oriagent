@@ -1,4 +1,5 @@
 import time
+import uuid
 from typing import Optional
 
 from sqlalchemy import select, delete, update, func, or_, case, exists
@@ -783,6 +784,43 @@ class UsersTable:
         try:
             async with get_async_db_context(db) as db:
                 await db.execute(delete(ApiKey).filter_by(user_id=id))
+                await db.commit()
+                return True
+        except Exception:
+            return False
+
+    async def get_user_api_keys_by_id(self, id: str, db: Optional[AsyncSession] = None) -> list[ApiKeyModel]:
+        try:
+            async with get_async_db_context(db) as db:
+                result = await db.execute(select(ApiKey).filter_by(user_id=id).order_by(ApiKey.created_at.desc()))
+                api_keys = result.scalars().all()
+                return [ApiKeyModel.model_validate(key) for key in api_keys]
+        except Exception:
+            return []
+
+    async def create_user_api_key_by_id(self, id: str, api_key: str, db: Optional[AsyncSession] = None) -> Optional[ApiKeyModel]:
+        try:
+            async with get_async_db_context(db) as db:
+                now = int(time.time())
+                new_api_key = ApiKey(
+                    id=f'key_{uuid.uuid4().hex}',
+                    user_id=id,
+                    key=api_key,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(new_api_key)
+                await db.commit()
+                await db.refresh(new_api_key)
+                return ApiKeyModel.model_validate(new_api_key)
+        except Exception as e:
+            print(f"Error creating api key: {e}")
+            return None
+
+    async def delete_user_api_key_by_key_id(self, id: str, key_id: str, db: Optional[AsyncSession] = None) -> bool:
+        try:
+            async with get_async_db_context(db) as db:
+                await db.execute(delete(ApiKey).filter_by(user_id=id, id=key_id))
                 await db.commit()
                 return True
         except Exception:

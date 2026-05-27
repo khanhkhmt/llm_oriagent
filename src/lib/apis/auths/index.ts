@@ -641,7 +641,7 @@ export const updateJWTExpiresDuration = async (token: string, duration: string) 
 export const createAPIKey = async (token: string) => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_key`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_keys`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -660,13 +660,13 @@ export const createAPIKey = async (token: string) => {
 	if (error) {
 		throw error;
 	}
-	return res.api_key;
+	return res;
 };
 
-export const getAPIKey = async (token: string) => {
+export const getAPIKeys = async (token: string) => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_key`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_keys`, {
 		method: 'GET',
 		headers: {
 			'Content-Type': 'application/json',
@@ -685,13 +685,13 @@ export const getAPIKey = async (token: string) => {
 	if (error) {
 		throw error;
 	}
-	return res.api_key;
+	return res;
 };
 
-export const deleteAPIKey = async (token: string) => {
+export const deleteAPIKey = async (token: string, key_id: string) => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_key`, {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/api_keys/${key_id}`, {
 		method: 'DELETE',
 		headers: {
 			'Content-Type': 'application/json',

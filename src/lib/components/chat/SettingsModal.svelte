@@ -8,6 +8,7 @@
 
 	import Modal from '../common/Modal.svelte';
 	import Account from './Settings/Account.svelte';
+	import APIKeys from './Settings/APIKeys.svelte';
 
 	import General from './Settings/General.svelte';
 	import Interface from './Settings/Interface.svelte';
@@ -23,6 +24,7 @@
 	import Link from '../icons/Link.svelte';
 	import UserCircle from '../icons/UserCircle.svelte';
 	import SoundHigh from '../icons/SoundHigh.svelte';
+	import LockClosed from '../icons/LockClosed.svelte';
 
 	import WrenchAlt from '../icons/WrenchAlt.svelte';
 	import Face from '../icons/Face.svelte';
@@ -378,6 +380,32 @@
 			]
 		},
 		{
+			id: 'api_keys',
+			title: 'API Keys',
+			keywords: [
+				'api',
+				'api key',
+				'api keys',
+				'apikey',
+				'apikeys',
+				'bearer token',
+				'bearertoken',
+				'create api key',
+				'createapikey',
+				'integration',
+				'jwt',
+				'jwt token',
+				'jwttoken',
+				'public api',
+				'publicapi',
+				'secret key',
+				'secretkey',
+				'third party',
+				'thirdparty',
+				'token'
+			]
+		},
+		{
 			id: 'account',
 			title: 'Account',
 			keywords: [
@@ -385,12 +413,8 @@
 				'account settings',
 				'accountpreferences',
 				'accountsettings',
-				'api keys',
-				'apikeys',
 				'change password',
 				'changepassword',
-				'jwt token',
-				'jwttoken',
 				'login',
 				'new password',
 				'newpassword',
@@ -457,6 +481,10 @@
 					$config?.features?.enable_memories &&
 					($user?.role === 'admin' || ($user?.permissions?.features?.memories ?? true))
 				);
+			}
+
+			if (tab.id === 'api_keys') {
+				return true;
 			}
 
 			return true;
@@ -756,6 +784,30 @@
 								</div>
 								<div class=" self-center">{$i18n.t('Data Controls')}</div>
 							</button>
+						{:else if tabId === 'api_keys'}
+							<button
+								role="tab"
+								aria-controls="tab-api-keys"
+								aria-selected={selectedTab === 'api_keys'}
+								class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
+								${
+									selectedTab === 'api_keys'
+										? ($settings?.highContrastMode ?? false)
+											? 'dark:bg-gray-800 bg-gray-200'
+											: ''
+										: ($settings?.highContrastMode ?? false)
+											? 'hover:bg-gray-200 dark:hover:bg-gray-800'
+											: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
+								}`}
+								on:click={() => {
+									selectedTab = 'api_keys';
+								}}
+							>
+								<div class=" self-center mr-2">
+									<LockClosed strokeWidth="2" />
+								</div>
+								<div class=" self-center">{$i18n.t('API Keys')}</div>
+							</button>
 						{:else if tabId === 'account'}
 							<button
 								role="tab"
@@ -855,6 +907,8 @@
 					/>
 				{:else if selectedTab === 'data_controls'}
 					<DataControls {saveSettings} />
+				{:else if selectedTab === 'api_keys'}
+					<APIKeys />
 				{:else if selectedTab === 'account'}
 					<Account
 						{saveSettings}

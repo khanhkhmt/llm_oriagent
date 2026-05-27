@@ -1461,6 +1461,15 @@ app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars
 if ENABLE_SCIM:
     app.include_router(scim.router, prefix='/api/v1/scim/v2', tags=['scim'])
 
+# OriAgent Public API v1 — stable API layer for third-party integrations
+from open_webui.routers.public.router import router as public_router
+
+app.include_router(
+    public_router,
+    prefix='/api/public/v1',
+    tags=['Public API'],
+)
+
 
 try:
     audit_level = AuditLevel(AUDIT_LOG_LEVEL)
