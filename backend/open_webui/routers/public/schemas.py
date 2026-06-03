@@ -4,7 +4,7 @@ These schemas define the public-facing request/response contracts.
 They intentionally do NOT expose internal fields (e.g., local file paths, provider keys).
 """
 
-from typing import Optional, Any
+from typing import Optional, Any, Literal, Union
 from pydantic import BaseModel, Field
 
 
@@ -48,8 +48,8 @@ class PublicModelCapabilities(BaseModel):
 
 
 class PublicModel(BaseModel):
-    id: str = Field(..., description="Model identifier", examples=["qwen2.5:0.5b"])
-    name: str = Field(..., description="Human-readable model name", examples=["Qwen 2.5 0.5B"])
+    id: str = Field(..., description="Model identifier", examples=["qwen3.5:2b"])
+    name: str = Field(..., description="Human-readable model name", examples=["Qwen 3.5 2B"])
     provider: str = Field("", description="Model provider (ollama, openai, etc.)", examples=["ollama"])
     capabilities: PublicModelCapabilities = Field(
         default_factory=PublicModelCapabilities,
@@ -62,12 +62,55 @@ class PublicModelListResponse(BaseModel):
     data: list[PublicModel] = Field(default_factory=list, description="List of available models")
 
 
+# ─── Tools (OpenAI-compatible function calling) ───────────────────────────────
+
+
+class PublicToolFunctionDef(BaseModel):
+    name: str = Field(..., description="Function name", examples=["get_order"])
+    description: Optional[str] = Field(None, description="What the function does")
+    parameters: Optional[dict] = Field(None, description="JSON-Schema for the function arguments")
+
+
+class PublicTool(BaseModel):
+    type: Literal["function"] = Field("function", description="Tool type (only 'function' supported)")
+    function: PublicToolFunctionDef = Field(..., description="Function definition")
+
+
+class PublicToolCallFunction(BaseModel):
+    name: str = Field(..., description="Name of the function the model wants to call")
+    arguments: str = Field(..., description="JSON-encoded string of arguments")
+
+
+class PublicToolCall(BaseModel):
+    id: str = Field(..., description="Unique tool call id", examples=["call_001"])
+    type: Literal["function"] = Field("function", description="Tool call type")
+    function: PublicToolCallFunction = Field(..., description="Called function and arguments")
+
+
+class PublicNamedToolChoice(BaseModel):
+    type: Literal["function"] = "function"
+    function: PublicToolFunctionDef
+
+
+# tool_choice may be a string ("auto"|"none"|"required") or a named-tool object.
+PublicToolChoice = Union[str, PublicNamedToolChoice]
+
+
 # ─── Chat Completion ─────────────────────────────────────────────────────────
 
 
 class PublicChatMessage(BaseModel):
-    role: str = Field(..., description="Message role", examples=["user", "assistant", "system"])
-    content: str = Field(..., description="Message content", examples=["Hello!"])
+    role: str = Field(..., description="Message role", examples=["user", "assistant", "system", "tool"])
+    content: Optional[str] = Field(None, description="Message content", examples=["Hello!"])
+    # Assistant tool-call request (echoed back by the client on the next turn)
+    tool_calls: Optional[list[PublicToolCall]] = Field(
+        None, description="Tool calls the assistant requested (assistant messages only)"
+    )
+    # For role='tool' observation messages
+    tool_call_id: Optional[str] = Field(
+        None, description="Id of the tool call this observation answers (required for role='tool')"
+    )
+    name: Optional[str] = Field(None, description="Optional tool/function name for role='tool' messages")
 
 
 class PublicChatCompletionMetadata(BaseModel):
@@ -76,11 +119,25 @@ class PublicChatCompletionMetadata(BaseModel):
 
 
 class PublicChatCompletionRequest(BaseModel):
-    model: str = Field(..., description="Model ID to use for completion", examples=["qwen2.5:0.5b"])
+    mode: Optional[Literal["chat", "external_tool_calling"]] = Field(
+        None,
+        description=(
+            "Request mode. 'chat' = plain completion (tools ignored). "
+            "'external_tool_calling' = the model may emit tool_calls for the CLIENT to execute. "
+            "If omitted, it is inferred from tools/tool_choice/tool-messages."
+        ),
+    )
+    model: str = Field(..., description="Model ID to use for completion", examples=["Qwen/Qwen3.5-2B"])
     messages: list[PublicChatMessage] = Field(
         ...,
         description="List of messages in the conversation",
         min_length=1,
+    )
+    tools: Optional[list[PublicTool]] = Field(
+        None, description="Function tools the model may call (OpenAI format). Max 32."
+    )
+    tool_choice: Optional[PublicToolChoice] = Field(
+        None, description="'auto' | 'none' | 'required' | {type:function, function:{name}}"
     )
     stream: bool = Field(False, description="Whether to stream the response")
     temperature: Optional[float] = Field(None, description="Sampling temperature (0.0-2.0)", ge=0.0, le=2.0)
@@ -100,13 +157,18 @@ class PublicUsage(BaseModel):
 
 class PublicChatCompletionChoiceMessage(BaseModel):
     role: str = Field("assistant", description="Message role")
-    content: str = Field("", description="Message content")
+    content: Optional[str] = Field(None, description="Message content (null when tool_calls present)")
+    tool_calls: Optional[list[PublicToolCall]] = Field(
+        None, description="Tool calls the model wants the client to execute"
+    )
 
 
 class PublicChatCompletionChoice(BaseModel):
     index: int = Field(0, description="Choice index")
     message: PublicChatCompletionChoiceMessage = Field(..., description="Generated message")
-    finish_reason: Optional[str] = Field("stop", description="Reason for completion", examples=["stop", "length"])
+    finish_reason: Optional[str] = Field(
+        "stop", description="Reason for completion", examples=["stop", "length", "tool_calls"]
+    )
 
 
 class PublicChatCompletionResponse(BaseModel):
@@ -221,3 +283,51 @@ class PublicImageData(BaseModel):
 class PublicImageGenerationResponse(BaseModel):
     created: int = Field(..., description="Unix timestamp of generation")
     data: list[PublicImageData] = Field(default_factory=list, description="Generated images")
+
+
+# ─── Internal ReAct Agent (/agents/run) ───────────────────────────────────────
+
+
+class PublicAgentRunRequest(BaseModel):
+    mode: Literal["internal_react"] = Field(
+        "internal_react", description="Always 'internal_react' for this endpoint."
+    )
+    model: str = Field(..., description="Model ID to use", examples=["Qwen/Qwen3.5-2B"])
+    messages: list[PublicChatMessage] = Field(
+        ..., description="Conversation so far (usually a single user message).", min_length=1
+    )
+    allowed_tools: list[str] = Field(
+        default_factory=list,
+        description="Names of INTERNAL tools the agent is allowed to use this run.",
+        examples=[["get_time", "echo"]],
+    )
+    temperature: Optional[float] = Field(None, description="Sampling temperature", ge=0.0, le=2.0)
+    max_steps: int = Field(5, description="Max ReAct iterations before forced stop", ge=1, le=8)
+    max_tokens: Optional[int] = Field(None, description="Max tokens per model call", ge=1, le=128000)
+    enable_intent_router: bool = Field(
+        True,
+        description=(
+            "When true (default), a deterministic pre-pass classifies the request and "
+            "may disable tools for general-knowledge questions and inject category guidance."
+        ),
+    )
+
+
+class PublicAgentToolTraceItem(BaseModel):
+    tool_name: str = Field(..., description="Internal tool that was executed")
+    arguments: dict = Field(default_factory=dict, description="Arguments passed to the tool")
+    status: str = Field(..., description="Execution status", examples=["success", "error"])
+
+
+class PublicAgentRunResponse(BaseModel):
+    answer: str = Field(..., description="Final answer (no Thought / reasoning exposed)")
+    tool_trace: list[PublicAgentToolTraceItem] = Field(
+        default_factory=list, description="Safe trace of internal tool executions"
+    )
+    steps: int = Field(0, description="Number of ReAct iterations performed")
+    finish_reason: str = Field("stop", description="'stop' or 'max_steps'", examples=["stop", "max_steps"])
+    intent: Optional[str] = Field(
+        None,
+        description="Detected intent category from the router",
+        examples=["general_qa", "data_query", "policy_query", "mixed", "tool_task"],
+    )

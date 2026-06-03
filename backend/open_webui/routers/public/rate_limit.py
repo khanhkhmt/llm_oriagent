@@ -28,6 +28,7 @@ _in_memory_store: dict[str, list[float]] = defaultdict(list)
 # Rate limit configuration: endpoint_prefix -> (max_requests, window_seconds)
 RATE_LIMITS = {
     "chat_completions": (60, 60),
+    "agents_run": (20, 60),
     "audio_transcriptions": (20, 60),
     "images_generations": (10, 60),
     "files": (30, 60),

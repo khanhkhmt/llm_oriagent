@@ -74,10 +74,10 @@ async def list_models(
         if "pipeline" in model and model["pipeline"].get("type") == "filter":
             continue
 
-        # Determine capabilities from model info
-        info = model.get("info", {})
-        meta = info.get("meta", {}) if info else {}
-        capabilities = meta.get("capabilities", {}) if meta else {}
+        # Determine capabilities from model info (defensive: any level may be None)
+        info = model.get("info") or {}
+        meta = info.get("meta") or {}
+        capabilities = meta.get("capabilities") or {}
 
         public_models.append(
             PublicModel(

@@ -15,6 +15,7 @@ from open_webui.routers.public.schemas import PublicHealthResponse
 
 from open_webui.routers.public import models as models_module
 from open_webui.routers.public import chat as chat_module
+from open_webui.routers.public import agents as agents_module
 from open_webui.routers.public import files as files_module
 from open_webui.routers.public import audio as audio_module
 from open_webui.routers.public import knowledge as knowledge_module
@@ -48,6 +49,7 @@ async def health_check(
 
 router.include_router(models_module.router, tags=["Public API - Models"])
 router.include_router(chat_module.router, tags=["Public API - Chat"])
+router.include_router(agents_module.router, tags=["Public API - Agents"])
 router.include_router(files_module.router, tags=["Public API - Files"])
 router.include_router(audio_module.router, tags=["Public API - Audio"])
 router.include_router(knowledge_module.router, tags=["Public API - Knowledge"])

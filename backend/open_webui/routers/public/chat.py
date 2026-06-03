@@ -1,28 +1,39 @@
 """
 Public Chat Completion API — POST /chat/completions
-Provides OpenAI-compatible chat completion for third-party integrations.
-Reuses the existing chat completion infrastructure without duplicating logic.
+
+OpenAI-compatible chat completion for third-party integrations, served directly by
+the vLLM OpenAI-compatible server (bypassing the internal thinking gateway so that
+tools / tool_choice / tool_calls pass through untouched).
+
+Two modes (auto-classified when `mode` is omitted):
+  - "chat"                  : plain completion. tools are ignored, tool_choice forced to "none".
+  - "external_tool_calling" : the model MAY emit tool_calls. The CLIENT executes them and
+                              sends observations back as role="tool" messages.
+
+This endpoint NEVER executes third-party tools. Internal tool execution only happens in
+POST /agents/run.
 """
 
-import json
 import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from starlette.responses import StreamingResponse
 
 from open_webui.routers.public.deps import PublicAPIContext, get_public_api_context
+from open_webui.routers.public.errors import PublicAPIError
 from open_webui.routers.public.rate_limit import check_rate_limit
-from open_webui.routers.public.schemas import (
-    PublicChatCompletionRequest,
-    PublicChatCompletionResponse,
-    PublicChatCompletionChoice,
-    PublicChatCompletionChoiceMessage,
-    PublicUsage,
+from open_webui.routers.public.schemas import PublicChatCompletionRequest
+from open_webui.routers.public.tools_schema import (
+    MODE_CHAT,
+    MODE_EXTERNAL_TOOL_CALLING,
+    classify_request,
+    validate_messages,
+    validate_tool_choice,
+    validate_tools,
 )
-
-from open_webui.utils.chat import generate_chat_completion
+from open_webui.routers.public import vllm_client
 from open_webui.utils.models import get_all_models, get_filtered_models
 
 log = logging.getLogger(__name__)
@@ -30,18 +41,85 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _resolve_model_or_403(request: Request, ctx: PublicAPIContext, model_id: str):
+    """Validate the model exists and the API-key user is allowed to use it."""
+    from open_webui.models.users import Users
+
+    user = await Users.get_user_by_id(ctx.user_id)
+    if user is None:
+        raise PublicAPIError(status.HTTP_401_UNAUTHORIZED, "unauthorized", "User not found.", ctx.request_id)
+
+    if not request.app.state.MODELS:
+        await get_all_models(request, user=user)
+
+    if model_id not in request.app.state.MODELS:
+        raise PublicAPIError(
+            status.HTTP_400_BAD_REQUEST, "model_not_found", f"Model '{model_id}' not found.", ctx.request_id
+        )
+
+    all_models = list(request.app.state.MODELS.values())
+    filtered = await get_filtered_models(all_models, user)
+    allowed_ids = {m.get("id") for m in filtered}
+    if model_id not in allowed_ids:
+        raise PublicAPIError(
+            status.HTTP_403_FORBIDDEN,
+            "model_forbidden",
+            f"You do not have access to model '{model_id}'.",
+            ctx.request_id,
+        )
+    return user
+
+
+def _build_payload(form_data: PublicChatCompletionRequest, mode: str) -> dict:
+    """Build the OpenAI-compatible payload sent to vLLM."""
+    payload = {
+        "model": form_data.model,
+        "messages": [
+            msg.model_dump(exclude_none=True) for msg in form_data.messages
+        ],
+    }
+
+    if form_data.temperature is not None:
+        payload["temperature"] = form_data.temperature
+    if form_data.max_tokens is not None:
+        payload["max_tokens"] = form_data.max_tokens
+    if form_data.top_p is not None:
+        payload["top_p"] = form_data.top_p
+    if form_data.frequency_penalty is not None:
+        payload["frequency_penalty"] = form_data.frequency_penalty
+    if form_data.presence_penalty is not None:
+        payload["presence_penalty"] = form_data.presence_penalty
+    if form_data.stop is not None:
+        payload["stop"] = form_data.stop
+
+    if mode == MODE_EXTERNAL_TOOL_CALLING:
+        if form_data.tools:
+            payload["tools"] = [t.model_dump(exclude_none=True) for t in form_data.tools]
+        # tool_choice may be a string or a named-tool object
+        if form_data.tool_choice is not None:
+            tc = form_data.tool_choice
+            payload["tool_choice"] = tc if isinstance(tc, str) else tc.model_dump(exclude_none=True)
+        elif form_data.tools:
+            payload["tool_choice"] = "auto"
+    else:
+        # chat mode: never send tools; explicitly disable tool calling
+        payload["tool_choice"] = "none"
+
+    return payload
+
+
 @router.post(
     "/chat/completions",
     summary="Create a chat completion",
     description=(
-        "Generates a chat completion response for the given messages and model. "
-        "Compatible with OpenAI's chat completion API format. "
-        "Supports both streaming (SSE) and non-streaming responses."
+        "OpenAI-compatible chat completion. Supports plain chat and external tool calling "
+        "(the model emits tool_calls for the client to execute). Streaming via SSE is supported. "
+        "This endpoint never executes third-party tools."
     ),
     responses={
-        400: {"description": "Invalid request (bad model, missing messages, etc.)"},
+        400: {"description": "Invalid request (bad model, tools schema, messages, etc.)"},
         401: {"description": "Invalid or missing API key"},
-        403: {"description": "Insufficient permissions"},
+        403: {"description": "Insufficient permissions / model not allowed"},
         429: {"description": "Rate limit exceeded"},
     },
 )
@@ -51,218 +129,106 @@ async def public_chat_completions(
     ctx: PublicAPIContext = Depends(get_public_api_context),
 ):
     await check_rate_limit(request, ctx.user_id, "chat_completions", ctx.request_id)
-
     start = time.monotonic()
 
-    # Get user object for internal APIs
-    from open_webui.models.users import Users
+    # 1) Classify
+    mode = classify_request(
+        form_data.mode, form_data.tools, form_data.tool_choice, form_data.messages
+    )
 
-    user = await Users.get_user_by_id(ctx.user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found.",
+    # 2) Validate messages always; tools/tool_choice only when tool calling
+    validate_messages([m.model_dump() for m in form_data.messages], ctx.request_id)
+    if mode == MODE_EXTERNAL_TOOL_CALLING:
+        validate_tools([t.model_dump() for t in form_data.tools] if form_data.tools else None, ctx.request_id)
+        tool_names = {t.function.name for t in form_data.tools} if form_data.tools else set()
+        validate_tool_choice(
+            form_data.tool_choice if isinstance(form_data.tool_choice, str)
+            else (form_data.tool_choice.model_dump() if form_data.tool_choice else None),
+            ctx.request_id,
+            tool_names=tool_names,
         )
 
-    # Ensure models are loaded
-    if not request.app.state.MODELS:
-        await get_all_models(request, user=user)
+    # 3) Model existence + access control (kept at the public edge)
+    await _resolve_model_or_403(request, ctx, form_data.model)
 
-    # Validate model exists and user has access
-    model_id = form_data.model
-    if model_id not in request.app.state.MODELS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Model '{model_id}' not found.",
-        )
-
-    # Check model access
-    all_models = list(request.app.state.MODELS.values())
-    filtered = await get_filtered_models(all_models, user)
-    allowed_ids = {m.get("id") for m in filtered}
-
-    if model_id not in allowed_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You do not have access to model '{model_id}'.",
-        )
-
-    # Build internal form_data — only safe parameters
-    internal_form = {
-        "model": model_id,
-        "messages": [msg.model_dump() for msg in form_data.messages],
-        "stream": form_data.stream,
-    }
-
-    if form_data.temperature is not None:
-        internal_form["temperature"] = form_data.temperature
-    if form_data.max_tokens is not None:
-        internal_form["max_tokens"] = form_data.max_tokens
-    if form_data.top_p is not None:
-        internal_form["top_p"] = form_data.top_p
-    if form_data.frequency_penalty is not None:
-        internal_form["frequency_penalty"] = form_data.frequency_penalty
-    if form_data.presence_penalty is not None:
-        internal_form["presence_penalty"] = form_data.presence_penalty
-    if form_data.stop is not None:
-        internal_form["stop"] = form_data.stop
-
-    # Add metadata — track external origin
-    internal_form["metadata"] = {
-        "user_id": ctx.user_id,
-        "source": "public_api",
-    }
-
+    # 4) Build payload and call vLLM directly
+    payload = _build_payload(form_data, mode)
     completion_id = f"chatcmpl_{uuid.uuid4().hex[:12]}"
+
+    log.info(
+        "Public API chat: request_id=%s user_id=%s model=%s mode=%s stream=%s",
+        ctx.request_id, ctx.user_id, form_data.model, mode, form_data.stream,
+    )
 
     try:
         if form_data.stream:
-            # Streaming response via SSE
-            response = await generate_chat_completion(
-                request=request,
-                form_data=internal_form,
-                user=user,
-                bypass_filter=True,
+            async def sse():
+                try:
+                    async for chunk in vllm_client.chat_completion_stream(payload):
+                        yield chunk
+                except vllm_client.VLLMError as e:
+                    log.warning("Public API stream vLLM error: request_id=%s %s", ctx.request_id, e.message)
+
+            return StreamingResponse(
+                sse(),
+                media_type="text/event-stream",
+                headers={"X-Request-ID": ctx.request_id, "Cache-Control": "no-cache"},
             )
 
-            if isinstance(response, StreamingResponse):
-                # Wrap the internal stream to ensure OpenAI-compatible SSE format
-                async def public_stream_wrapper():
-                    try:
-                        async for chunk in response.body_iterator:
-                            if isinstance(chunk, bytes):
-                                chunk = chunk.decode("utf-8")
-                            # Pass through SSE data lines
-                            yield chunk
-                        # Send final [DONE] marker
-                        yield "data: [DONE]\n\n"
-                    except Exception as e:
-                        log.error(
-                            "Public API stream error: request_id=%s error=%s",
-                            ctx.request_id,
-                            str(e),
-                        )
+        data = await vllm_client.chat_completion(payload)
+        return _format_completion_response(data, completion_id, form_data.model, ctx, start)
 
-                latency_ms = int((time.monotonic() - start) * 1000)
-                log.info(
-                    "Public API chat stream started: request_id=%s user_id=%s model=%s latency_ms=%d",
-                    ctx.request_id,
-                    ctx.user_id,
-                    model_id,
-                    latency_ms,
-                )
-
-                return StreamingResponse(
-                    public_stream_wrapper(),
-                    media_type="text/event-stream",
-                    headers={
-                        "X-Request-ID": ctx.request_id,
-                        "Cache-Control": "no-cache",
-                    },
-                )
-            else:
-                # If internal returned a dict (non-streaming fallback)
-                return _format_completion_response(response, completion_id, model_id, ctx, start)
-
-        else:
-            # Non-streaming response
-            response = await generate_chat_completion(
-                request=request,
-                form_data=internal_form,
-                user=user,
-                bypass_filter=True,
-            )
-
-            return _format_completion_response(response, completion_id, model_id, ctx, start)
-
-    except HTTPException:
+    except vllm_client.VLLMError as e:
+        raise PublicAPIError(
+            status_code=502 if e.status_code not in (503,) else 503,
+            code="upstream_error",
+            message="The model server could not process the request.",
+            request_id=ctx.request_id,
+        )
+    except PublicAPIError:
         raise
-    except Exception as e:
-        log.error(
-            "Public API chat error: request_id=%s user_id=%s model=%s error=%s",
-            ctx.request_id,
-            ctx.user_id,
-            model_id,
-            str(e),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while generating the completion.",
+    except Exception as e:  # noqa: BLE001
+        log.error("Public API chat error: request_id=%s error=%s", ctx.request_id, str(e))
+        raise PublicAPIError(
+            status_code=500, code="internal_error",
+            message="An error occurred while generating the completion.",
+            request_id=ctx.request_id,
         )
 
 
-def _format_completion_response(
-    response, completion_id: str, model_id: str, ctx: PublicAPIContext, start: float
-) -> dict:
-    """Format internal response to OpenAI-compatible public API response."""
+def _format_completion_response(data: dict, completion_id: str, model_id: str, ctx, start) -> dict:
+    """Map vLLM's chat.completion into the public response, PRESERVING tool_calls."""
     latency_ms = int((time.monotonic() - start) * 1000)
     log.info(
-        "Public API chat completion: request_id=%s user_id=%s model=%s latency_ms=%d",
-        ctx.request_id,
-        ctx.user_id,
-        model_id,
-        latency_ms,
+        "Public API chat done: request_id=%s model=%s latency_ms=%d",
+        ctx.request_id, model_id, latency_ms,
     )
 
-    if isinstance(response, dict):
-        # Already OpenAI-compatible format from internal API
-        choices = response.get("choices", [])
-        usage = response.get("usage", {})
-
-        formatted_choices = []
-        for i, choice in enumerate(choices):
-            msg = choice.get("message", {})
-            formatted_choices.append(
-                PublicChatCompletionChoice(
-                    index=i,
-                    message=PublicChatCompletionChoiceMessage(
-                        role=msg.get("role", "assistant"),
-                        content=msg.get("content", ""),
-                    ),
-                    finish_reason=choice.get("finish_reason", "stop"),
-                ).model_dump()
-            )
-
-        if not formatted_choices:
-            # Fallback — try to extract content from a simple response
-            content = response.get("content", response.get("message", {}).get("content", ""))
-            if content:
-                formatted_choices = [
-                    PublicChatCompletionChoice(
-                        index=0,
-                        message=PublicChatCompletionChoiceMessage(
-                            role="assistant",
-                            content=content,
-                        ),
-                        finish_reason="stop",
-                    ).model_dump()
-                ]
-
-        return {
-            "id": completion_id,
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": model_id,
-            "choices": formatted_choices,
-            "usage": {
-                "prompt_tokens": usage.get("prompt_tokens", 0),
-                "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
-            },
+    usage = data.get("usage", {}) or {}
+    out_choices = []
+    for i, choice in enumerate(data.get("choices", [])):
+        msg = choice.get("message", {}) or {}
+        message_out = {
+            "role": msg.get("role", "assistant"),
+            "content": msg.get("content"),
         }
-    else:
-        # Unexpected response type
-        return {
-            "id": completion_id,
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": model_id,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": str(response)},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
+        if msg.get("tool_calls"):
+            message_out["tool_calls"] = msg["tool_calls"]
+        out_choices.append({
+            "index": i,
+            "message": message_out,
+            "finish_reason": choice.get("finish_reason", "stop"),
+        })
+
+    return {
+        "id": data.get("id", completion_id),
+        "object": "chat.completion",
+        "created": data.get("created", int(time.time())),
+        "model": model_id,
+        "choices": out_choices,
+        "usage": {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        },
+    }

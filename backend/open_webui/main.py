@@ -1463,12 +1463,20 @@ if ENABLE_SCIM:
 
 # OriAgent Public API v1 — stable API layer for third-party integrations
 from open_webui.routers.public.router import router as public_router
+from open_webui.routers.public.errors import (
+    PublicAPIError,
+    public_api_exception_handler,
+)
 
 app.include_router(
     public_router,
     prefix='/api/public/v1',
     tags=['Public API'],
 )
+
+# Scoped exception handler: only PublicAPIError gets the structured public error format,
+# leaving global HTTPException behavior unchanged for the rest of the app.
+app.add_exception_handler(PublicAPIError, public_api_exception_handler)
 
 
 try:
