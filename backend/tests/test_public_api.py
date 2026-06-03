@@ -389,6 +389,11 @@ def test_grounding_thousand_separator_matches():
     # 1.500 in answer should match 1500 in corpus (separator-normalized).
     assert find_ungrounded_numbers("khoảng 1.500 ca", "tổng 1500") == []
 
+def test_grounding_ignores_alphanumeric_ids():
+    from open_webui.routers.public.grounding import find_ungrounded_numbers
+    # "19" inside "COVID-19" must NOT be flagged as an ungrounded data number.
+    assert find_ungrounded_numbers("liên quan đến COVID-19 và dịch bệnh", "") == []
+
 def test_grounding_foreign_script():
     from open_webui.routers.public.grounding import contains_foreign_script
     assert contains_foreign_script("病床數量 vừa phải") is True

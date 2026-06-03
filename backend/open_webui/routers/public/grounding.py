@@ -16,7 +16,9 @@ import re
 from typing import Iterable
 
 # A numeric token: a run of digits with optional . , separators (e.g. 1.500, 2,000, 15.5).
-_NUMBER_RE = re.compile(r"\d[\d.,]*\d|\d")
+# The negative lookbehind skips numbers glued to letters/hyphen so identifiers like
+# "COVID-19", "ID7", "v2" are NOT treated as data numbers (avoids false positives).
+_NUMBER_RE = re.compile(r"(?<![\w-])\d[\d.,]*\d|(?<![\w-])\d")
 # CJK Unified Ideographs / Hiragana / Katakana / Hangul — should not appear in vi/en text.
 _FOREIGN_SCRIPT_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
 
