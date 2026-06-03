@@ -135,6 +135,17 @@ Guarantees regardless of mode:
 - **Raw tool-call markup never leaks into `content`** (no `<tool_call>…</tool_call>` text). When the model emits it, it is parsed into structured `tool_calls` (when tool calling is allowed) or stripped (when it is not).
 - **Reasoning (`<think>…</think>`) is never returned**, including across streaming chunk boundaries.
 
+### Output-quality controls (optional)
+
+For weaker models, two optional request fields help keep answers grounded:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `response_format` | object | OpenAI-compatible structured output forwarded to the model server for guided decoding, e.g. `{"type":"json_object"}` or `{"type":"json_schema","json_schema":{…}}`. Constrains the model to a fixed shape — recommended for analytic/numeric answers. |
+| `enforce_grounding` | boolean | Default `false`. For **non-streaming** answers, the gateway checks the reply for numbers absent from the tool observations / user input and for foreign-script leakage (e.g. CJK). If found, it runs **one** corrective regeneration grounded only in the existing context. Combine with a system prompt that tells the model to report units exactly and only use numbers from tool results. |
+
+> These are heuristics, not hard guarantees — pair them with a strict system prompt for best results.
+
 ---
 
 ## External ReAct Flow

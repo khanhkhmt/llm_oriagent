@@ -375,5 +375,30 @@ def test_route_default_tool_task():
     assert r["suggested_tool_choice"] == "auto"
 
 
+# ─── Grounding guard ──────────────────────────────────────────────────────────
+
+def test_grounding_ungrounded_numbers():
+    from open_webui.routers.public.grounding import find_ungrounded_numbers
+    corpus = "| Hà Nội | 1500 | 2024 |"
+    # 1500 and 2024 are grounded; 150000 and 15 (well, 15 has 2 digits) are invented.
+    assert find_ungrounded_numbers("Hà Nội có 1500 ca năm 2024", corpus) == []
+    assert "150000" in find_ungrounded_numbers("dân số 150.000 người", corpus)
+
+def test_grounding_thousand_separator_matches():
+    from open_webui.routers.public.grounding import find_ungrounded_numbers
+    # 1.500 in answer should match 1500 in corpus (separator-normalized).
+    assert find_ungrounded_numbers("khoảng 1.500 ca", "tổng 1500") == []
+
+def test_grounding_foreign_script():
+    from open_webui.routers.public.grounding import contains_foreign_script
+    assert contains_foreign_script("病床數量 vừa phải") is True
+    assert contains_foreign_script("số giường bệnh vừa phải") is False
+
+def test_grounding_report_ok():
+    from open_webui.routers.public.grounding import grounding_report
+    r = grounding_report("Hà Nội 1500 ca", "1500")
+    assert r["ok"] is True and r["ungrounded_numbers"] == [] and r["foreign_script"] is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

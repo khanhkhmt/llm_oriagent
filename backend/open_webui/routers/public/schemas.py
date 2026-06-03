@@ -146,6 +146,22 @@ class PublicChatCompletionRequest(BaseModel):
     frequency_penalty: Optional[float] = Field(None, description="Frequency penalty", ge=-2.0, le=2.0)
     presence_penalty: Optional[float] = Field(None, description="Presence penalty", ge=-2.0, le=2.0)
     stop: Optional[list[str]] = Field(None, description="Stop sequences")
+    response_format: Optional[dict] = Field(
+        None,
+        description=(
+            "OpenAI-compatible structured output, e.g. {\"type\":\"json_object\"} or "
+            "{\"type\":\"json_schema\",\"json_schema\":{...}}. Forwarded to the model server "
+            "for guided decoding — useful to constrain weak models to a fixed JSON shape."
+        ),
+    )
+    enforce_grounding: bool = Field(
+        False,
+        description=(
+            "When true, the gateway checks the (non-streaming) answer for numbers not present "
+            "in the tool observations / user input and for foreign-script leakage; if found, it "
+            "runs one corrective regeneration grounded only in the existing context."
+        ),
+    )
     metadata: Optional[PublicChatCompletionMetadata] = Field(None, description="Optional metadata for tracking")
 
 

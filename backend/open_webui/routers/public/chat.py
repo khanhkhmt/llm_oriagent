@@ -21,6 +21,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from starlette.responses import StreamingResponse
 
+from open_webui.routers.public import grounding
 from open_webui.routers.public.deps import PublicAPIContext, get_public_api_context
 from open_webui.routers.public.errors import PublicAPIError
 from open_webui.routers.public.rate_limit import check_rate_limit
@@ -91,6 +92,9 @@ def _build_payload(form_data: PublicChatCompletionRequest, mode: str) -> dict:
         payload["presence_penalty"] = form_data.presence_penalty
     if form_data.stop is not None:
         payload["stop"] = form_data.stop
+    if form_data.response_format is not None:
+        # Structured output / guided decoding — forwarded verbatim to vLLM.
+        payload["response_format"] = form_data.response_format
 
     if mode == MODE_EXTERNAL_TOOL_CALLING:
         if form_data.tools:
@@ -176,6 +180,7 @@ async def public_chat_completions(
             )
 
         data = await vllm_client.chat_completion(payload)
+        data = await _apply_grounding_guard(form_data, payload, data, ctx)
         return _format_completion_response(data, completion_id, form_data.model, ctx, start)
 
     except vllm_client.VLLMError as e:
@@ -194,6 +199,86 @@ async def public_chat_completions(
             message="An error occurred while generating the completion.",
             request_id=ctx.request_id,
         )
+
+
+_GROUNDING_NUDGE = (
+    "QUAN TRỌNG: Chỉ sử dụng số liệu và dữ kiện xuất hiện trong các kết quả tool phía trên. "
+    "Không thêm bất kỳ con số hay khẳng định nào ngoài dữ liệu đó; nếu thiếu dữ liệu, hãy nói rõ. "
+    "Trả lời cùng ngôn ngữ với người dùng và chỉ dùng ký tự Việt/Anh (không dùng ký tự ngôn ngữ khác)."
+)
+
+
+def _answer_and_corpus(form_data: PublicChatCompletionRequest, data: dict):
+    """Extract the final answer text + the grounding corpus (tool + user content).
+
+    Returns (answer, corpus, has_tool_msgs) or (None, ...) when the choice is a
+    tool-call turn (no prose answer to check).
+    """
+    choices = data.get("choices") or []
+    if not choices:
+        return None, "", False
+    msg = choices[0].get("message") or {}
+    if msg.get("tool_calls"):
+        return None, "", False
+    answer = msg.get("content") or ""
+
+    tool_texts, user_texts, has_tool = [], [], False
+    for m in form_data.messages:
+        if m.role == "tool":
+            has_tool = True
+            if m.content:
+                tool_texts.append(m.content)
+        elif m.role == "user" and m.content:
+            user_texts.append(m.content)
+    corpus = grounding.build_corpus(tool_texts + user_texts)
+    return answer, corpus, has_tool
+
+
+async def _apply_grounding_guard(
+    form_data: PublicChatCompletionRequest, payload: dict, data: dict, ctx
+) -> dict:
+    """Detect ungrounded numbers / foreign-script in the answer; log, and (when
+    enforce_grounding) run ONE corrective regeneration grounded in existing context.
+    """
+    answer, corpus, has_tool = _answer_and_corpus(form_data, data)
+    if answer is None:
+        return data  # tool-call turn — nothing to ground
+
+    foreign = grounding.contains_foreign_script(answer)
+    # Only number-check answers that are supposed to be grounded in tool data.
+    ungrounded = grounding.find_ungrounded_numbers(answer, corpus) if has_tool else []
+
+    if not ungrounded and not foreign:
+        return data
+
+    log.warning(
+        "Public API grounding flag: request_id=%s ungrounded_numbers=%s foreign_script=%s enforce=%s",
+        ctx.request_id, ungrounded, foreign, form_data.enforce_grounding,
+    )
+
+    if not form_data.enforce_grounding:
+        return data
+
+    # One corrective pass: force a textual answer grounded in the existing context.
+    corrective = dict(payload)
+    corrective.pop("tools", None)
+    corrective["tool_choice"] = "none"
+    corrective["temperature"] = 0
+    corrective["messages"] = list(payload.get("messages", [])) + [
+        {"role": "system", "content": _GROUNDING_NUDGE}
+    ]
+    try:
+        regen = await vllm_client.chat_completion(corrective)
+        new_answer, _, _ = _answer_and_corpus(form_data, regen)
+        new_report = grounding.grounding_report(new_answer or "", corpus)
+        log.info(
+            "Public API grounding regenerated: request_id=%s now_ok=%s ungrounded=%s",
+            ctx.request_id, new_report["ok"], new_report["ungrounded_numbers"],
+        )
+        return regen
+    except vllm_client.VLLMError:
+        log.warning("Public API grounding regen failed: request_id=%s (keeping original)", ctx.request_id)
+        return data
 
 
 def _format_completion_response(data: dict, completion_id: str, model_id: str, ctx, start) -> dict:
