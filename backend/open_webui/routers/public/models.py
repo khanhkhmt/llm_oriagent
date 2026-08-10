@@ -9,6 +9,7 @@ import time
 from fastapi import APIRouter, Depends, Request
 
 from open_webui.routers.public.deps import PublicAPIContext, get_public_api_context
+from open_webui.routers.public.model_alias import DISPLAY_MODEL_NAME, INTERNAL_MODEL_NAME
 from open_webui.routers.public.rate_limit import check_rate_limit
 from open_webui.routers.public.schemas import (
     PublicModel,
@@ -79,11 +80,21 @@ async def list_models(
         meta = info.get("meta") or {}
         capabilities = meta.get("capabilities") or {}
 
+        # Brand Aliasing for Public exposure
+        m_id = model.get("id", "")
+        m_name = model.get("name", m_id)
+        m_provider = provider
+        
+        if m_id == INTERNAL_MODEL_NAME:
+            m_id = DISPLAY_MODEL_NAME
+            m_name = DISPLAY_MODEL_NAME
+            m_provider = "AHT Tech"
+
         public_models.append(
             PublicModel(
-                id=model.get("id", ""),
-                name=model.get("name", model.get("id", "")),
-                provider=provider,
+                id=m_id,
+                name=m_name,
+                provider=m_provider,
                 capabilities=PublicModelCapabilities(
                     vision=capabilities.get("vision", False),
                     tools=capabilities.get("tools", False),

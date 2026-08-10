@@ -1,51 +1,54 @@
-# OpenAPI / Swagger Documentation
+# OpenAPI / Swagger
 
-## Accessing OpenAPI Docs
+## Development
 
-The OriAgent Public API endpoints are included in the FastAPI OpenAPI schema.
-
-### Development Mode
-
-When `ENV=dev`, Swagger docs are available at:
+When `ENV=dev`, Swagger UI is available at:
 
 ```
 http://localhost:8080/docs
 ```
 
-The Public API endpoints appear under the **"Public API"** tag.
+The OpenAPI JSON spec is at:
 
-### Production
+```
+http://localhost:8080/openapi.json
+```
 
-In production (`ENV=prod`), Swagger UI and OpenAPI JSON are **disabled by default** for security:
+Public API endpoints appear under the **"Public API"** tags in the spec.
+
+## Production
+
+In production (`ENV=prod`), Swagger UI and the OpenAPI JSON endpoint are **disabled by default**:
 
 ```python
 # main.py
 app = FastAPI(
-    docs_url='/docs' if ENV == 'dev' else None,
-    openapi_url='/openapi.json' if ENV == 'dev' else None,
+    docs_url="/docs" if ENV == "dev" else None,
+    openapi_url="/openapi.json" if ENV == "dev" else None,
 )
 ```
 
-> **Note:** Do NOT assume production Swagger docs are available. The OpenAPI spec is only served in development mode.
+Do not assume production Swagger docs are available.
 
-## Schema Documentation
+## Schema Coverage
 
-All Public API endpoints have:
+All Public API endpoints include:
 
-- **Summary** — Short description
-- **Description** — Detailed explanation
-- **Response models** — Pydantic schema with Field descriptions
-- **Examples** — In Pydantic schema `examples` parameter
-- **Status codes** — Documented in `responses` parameter
+- **Summary** — short one-line description
+- **Description** — detailed explanation
+- **Request body** — Pydantic schema with field descriptions and examples
+- **Response models** — typed Pydantic schemas
+- **Status codes** — documented in the `responses` parameter
 
 ## Tags
 
-All Public API endpoints are tagged with:
-
-- `Public API` (main tag)
-- `Public API - Models`
-- `Public API - Chat`
-- `Public API - Files`
-- `Public API - Audio`
-- `Public API - Knowledge`
-- `Public API - Images`
+| Tag | Endpoints |
+|-----|-----------|
+| `Public API` | `/health` |
+| `Public API - Models` | `/models` |
+| `Public API - Chat` | `/chat/completions` |
+| `Public API - Agents` | `/agents/run` |
+| `Public API - Files` | `/files`, `/files/{id}` |
+| `Public API - Audio` | `/audio/transcriptions`, `/audio/speech` |
+| `Public API - Knowledge` | `/knowledge/query` |
+| `Public API - Images` | `/images/generations` |

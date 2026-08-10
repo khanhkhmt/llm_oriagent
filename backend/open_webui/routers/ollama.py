@@ -1143,6 +1143,14 @@ async def generate_chat_completion(
     if prefix_id:
         payload['model'] = payload['model'].replace(f'{prefix_id}.', '')
 
+    # ── Thinking Guard: classify intent & inject think=false for simple queries ──
+    try:
+        from open_webui.utils.thinking_guard import apply_thinking_guard
+        classification = apply_thinking_guard(payload)
+        log.info(f"[ThinkingGuard] Applied: mode={classification['mode']}, allow_thinking={classification['allow_thinking']}")
+    except Exception as e:
+        log.warning(f"[ThinkingGuard] Failed (non-fatal): {e}")
+
     return await send_request(
         f'{url}/api/chat',
         payload=json.dumps(payload),

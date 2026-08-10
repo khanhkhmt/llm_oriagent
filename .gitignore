@@ -231,3 +231,10 @@ out
 cypress/videos
 cypress/screenshots
 .vscode/settings.json
+
+
+qwen_ollama_api/*
+scripts/*
+
+vllm_help.txt 
+Test_APIpublics/*

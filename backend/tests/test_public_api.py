@@ -405,5 +405,28 @@ def test_grounding_report_ok():
     assert r["ok"] is True and r["ungrounded_numbers"] == [] and r["foreign_script"] is False
 
 
+def test_model_alias_display_to_internal():
+    from open_webui.routers.public.model_alias import (
+        DISPLAY_MODEL_NAME,
+        INTERNAL_MODEL_NAME,
+        to_internal_id,
+    )
+    assert to_internal_id(DISPLAY_MODEL_NAME) == INTERNAL_MODEL_NAME
+    assert to_internal_id(INTERNAL_MODEL_NAME) == INTERNAL_MODEL_NAME
+    assert to_internal_id("other-model") == "other-model"
+
+def test_model_alias_candidates_cover_both_names():
+    from open_webui.routers.public.model_alias import (
+        DISPLAY_MODEL_NAME,
+        INTERNAL_MODEL_NAME,
+        alias_candidates,
+    )
+    both = {DISPLAY_MODEL_NAME, INTERNAL_MODEL_NAME}
+    # Either name must match a registry that only knows one of them.
+    assert alias_candidates(DISPLAY_MODEL_NAME) == both
+    assert alias_candidates(INTERNAL_MODEL_NAME) == both
+    assert alias_candidates("other-model") == {"other-model"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

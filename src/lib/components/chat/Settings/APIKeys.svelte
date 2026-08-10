@@ -269,13 +269,8 @@
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "model": "qwen2.5:0.5b",
-    "messages": [
-      &#123;
-        "role": "user",
-        "content": "Xin chào!"
-      &#125;
-    ]
+    "model": "Qwen/Qwen3.5-2B",
+    "messages": [&#123;"role": "user", "content": "Hello!"}]
   &#125;'</pre>
 							</div>
 						</div>
@@ -294,10 +289,32 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="qwen2.5:0.5b",
+    model="Qwen/Qwen3.5-2B",
     messages=[&#123;"role": "user", "content": "Hello!"&#125;]
 )
 print(response.choices[0].message.content)</pre>
+							</div>
+						</div>
+
+						<!-- Agents (ReAct) -->
+						<div>
+							<div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+								<span class="font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded text-[10px]">POST</span>
+								/agents/run
+							</div>
+							<div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+								{$i18n.t('Run a server-side ReAct agent. OriAgent executes internal tools and returns the final answer.')}
+							</div>
+							<div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+								<pre class="font-mono text-xs px-2 py-1 overflow-x-auto whitespace-pre-wrap">curl -X POST "https://llm.oriagent.com/api/public/v1/agents/run" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "model": "Qwen/Qwen3.5-2B",
+    "messages": [&#123;"role": "user", "content": "What time is it in UTC?"&#125;],
+    "allowed_tools": ["get_time"],
+    "max_steps": 4
+  &#125;'</pre>
 							</div>
 						</div>
 
@@ -332,7 +349,7 @@ print(response.choices[0].message.content)</pre>
 								<div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
 									<pre class="font-mono text-xs px-2 py-1 overflow-x-auto whitespace-pre-wrap">curl -X POST https://llm.oriagent.com/api/public/v1/audio/transcriptions \
   -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "file=@audio.wav" -F "language=vi"</pre>
+  -F "file=@audio.mp3" -F "language=en"</pre>
 								</div>
 							</div>
 
@@ -345,7 +362,7 @@ print(response.choices[0].message.content)</pre>
 									<pre class="font-mono text-xs px-2 py-1 overflow-x-auto whitespace-pre-wrap">curl -X POST https://llm.oriagent.com/api/public/v1/audio/speech \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;"input": "Xin chào OriAgent!"&#125;' --output speech.mp3</pre>
+  -d '&#123;"input": "Hello, I am OriAgent."&#125;' --output speech.mp3</pre>
 								</div>
 							</div>
 						</div>
@@ -365,7 +382,7 @@ print(response.choices[0].message.content)</pre>
   -H "Content-Type: application/json" \
   -d '&#123;
     "knowledge_id": "your-knowledge-id",
-    "query": "Chính sách là gì?",
+    "query": "What is the policy?",
     "top_k": 3
   &#125;'</pre>
 							</div>

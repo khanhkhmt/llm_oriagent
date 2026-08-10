@@ -48,9 +48,9 @@ class PublicModelCapabilities(BaseModel):
 
 
 class PublicModel(BaseModel):
-    id: str = Field(..., description="Model identifier", examples=["qwen3.5:2b"])
-    name: str = Field(..., description="Human-readable model name", examples=["Qwen 3.5 2B"])
-    provider: str = Field("", description="Model provider (ollama, openai, etc.)", examples=["ollama"])
+    id: str = Field(..., description="Model identifier", examples=["Oriagent-2.1 Mini / Flash Lite"])
+    name: str = Field(..., description="Human-readable model name", examples=["Oriagent-2.1 Mini / Flash Lite"])
+    provider: str = Field("", description="Model provider", examples=["AHT Tech"])
     capabilities: PublicModelCapabilities = Field(
         default_factory=PublicModelCapabilities,
         description="Model capability flags",
@@ -127,7 +127,7 @@ class PublicChatCompletionRequest(BaseModel):
             "If omitted, it is inferred from tools/tool_choice/tool-messages."
         ),
     )
-    model: str = Field(..., description="Model ID to use for completion", examples=["Qwen/Qwen3.5-2B"])
+    model: str = Field(..., description="Model ID to use for completion", examples=["Oriagent-2.1 Mini / Flash Lite"])
     messages: list[PublicChatMessage] = Field(
         ...,
         description="List of messages in the conversation",
@@ -308,7 +308,7 @@ class PublicAgentRunRequest(BaseModel):
     mode: Literal["internal_react"] = Field(
         "internal_react", description="Always 'internal_react' for this endpoint."
     )
-    model: str = Field(..., description="Model ID to use", examples=["Qwen/Qwen3.5-2B"])
+    model: str = Field(..., description="Model ID to use", examples=["Oriagent-2.1 Mini / Flash Lite"])
     messages: list[PublicChatMessage] = Field(
         ..., description="Conversation so far (usually a single user message).", min_length=1
     )

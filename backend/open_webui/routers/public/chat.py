@@ -35,6 +35,7 @@ from open_webui.routers.public.tools_schema import (
     validate_tools,
 )
 from open_webui.routers.public import vllm_client
+from open_webui.routers.public.model_alias import IDENTITY_PROMPT, alias_candidates, to_internal_id
 from open_webui.utils.models import get_all_models, get_filtered_models
 
 log = logging.getLogger(__name__)
@@ -42,8 +43,10 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _resolve_model_or_403(request: Request, ctx: PublicAPIContext, model_id: str):
-    """Validate the model exists and the API-key user is allowed to use it."""
+async def _resolve_model_or_403(request: Request, ctx: PublicAPIContext, model_id: str) -> str:
+    """Validate the model exists and the API-key user is allowed to use it.
+    Returns the resolved internal model ID.
+    """
     from open_webui.models.users import Users
 
     user = await Users.get_user_by_id(ctx.user_id)
@@ -53,7 +56,11 @@ async def _resolve_model_or_403(request: Request, ctx: PublicAPIContext, model_i
     if not request.app.state.MODELS:
         await get_all_models(request, user=user)
 
-    if model_id not in request.app.state.MODELS:
+    # The registry may know the model under its display or internal name;
+    # accept whichever the client sent and check every alias.
+    candidates = alias_candidates(model_id)
+
+    if not candidates & request.app.state.MODELS.keys():
         raise PublicAPIError(
             status.HTTP_400_BAD_REQUEST, "model_not_found", f"Model '{model_id}' not found.", ctx.request_id
         )
@@ -61,23 +68,35 @@ async def _resolve_model_or_403(request: Request, ctx: PublicAPIContext, model_i
     all_models = list(request.app.state.MODELS.values())
     filtered = await get_filtered_models(all_models, user)
     allowed_ids = {m.get("id") for m in filtered}
-    if model_id not in allowed_ids:
+    if not candidates & allowed_ids:
         raise PublicAPIError(
             status.HTTP_403_FORBIDDEN,
             "model_forbidden",
             f"You do not have access to model '{model_id}'.",
             ctx.request_id,
         )
-    return user
+    return to_internal_id(model_id)
 
 
 def _build_payload(form_data: PublicChatCompletionRequest, mode: str) -> dict:
     """Build the OpenAI-compatible payload sent to vLLM."""
+    resolved_model = to_internal_id(form_data.model)
+
+    client_messages = [msg.model_dump(exclude_none=True) for msg in form_data.messages]
+
+    # Qwen's chat template accepts a single system message and only at the start:
+    # brand identity comes first, then any leading client system messages are
+    # merged into that same message.
+    system_parts = [IDENTITY_PROMPT]
+    while client_messages and client_messages[0].get("role") == "system":
+        content = client_messages.pop(0).get("content")
+        if content:
+            system_parts.append(content)
+    messages = [{"role": "system", "content": "\n\n".join(system_parts)}] + client_messages
+
     payload = {
-        "model": form_data.model,
-        "messages": [
-            msg.model_dump(exclude_none=True) for msg in form_data.messages
-        ],
+        "model": resolved_model,
+        "messages": messages,
     }
 
     if form_data.temperature is not None:
@@ -158,10 +177,11 @@ async def public_chat_completions(
     # 4) Build payload and call vLLM directly
     payload = _build_payload(form_data, mode)
     completion_id = f"chatcmpl_{uuid.uuid4().hex[:12]}"
+    resolved_model = payload.get("model", form_data.model)
 
     log.info(
-        "Public API chat: request_id=%s user_id=%s model=%s mode=%s stream=%s",
-        ctx.request_id, ctx.user_id, form_data.model, mode, form_data.stream,
+        "Public API chat: request_id=%s user_id=%s requested_model='%s' -> internal_model='%s' mode=%s stream=%s",
+        ctx.request_id, ctx.user_id, form_data.model, resolved_model, mode, form_data.stream,
     )
 
     try:

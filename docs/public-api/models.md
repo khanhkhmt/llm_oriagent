@@ -1,22 +1,14 @@
 # Models API
 
-## List Available Models
+List the models your API key is permitted to use.
 
-Returns a list of models the authenticated user is allowed to use.
-
-### Endpoint
+## GET /models
 
 ```
 GET https://llm.oriagent.com/api/public/v1/models
 ```
 
-### Authentication
-
-Required. `Authorization: Bearer <api_key>`
-
-### Permission
-
-`public:models:read`
+**Authentication:** Required — `Authorization: Bearer <api-key>`
 
 ### Response
 
@@ -25,12 +17,12 @@ Required. `Authorization: Bearer <api_key>`
   "object": "list",
   "data": [
     {
-      "id": "qwen2.5:0.5b",
-      "name": "Qwen 2.5 0.5B",
-      "provider": "ollama",
+      "id": "Qwen/Qwen3.5-2B",
+      "name": "Qwen 3.5 2B",
+      "provider": "openai",
       "capabilities": {
         "vision": false,
-        "tools": false,
+        "tools": true,
         "file_upload": true
       }
     }
@@ -38,43 +30,54 @@ Required. `Authorization: Bearer <api_key>`
 }
 ```
 
-### curl Example
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Model identifier — use this as the `model` field in requests |
+| `name` | string | Human-readable display name |
+| `provider` | string | Backend provider: `ollama`, `openai`, `pipeline`, or `unknown` |
+| `capabilities.vision` | boolean | Accepts image inputs |
+| `capabilities.tools` | boolean | Supports function/tool calling |
+| `capabilities.file_upload` | boolean | Accepts file uploads in context |
 
+### Errors
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 401 | `unauthorized` | Missing or invalid API key |
+| 403 | `forbidden` | API key feature disabled |
+| 429 | `rate_limit_error` | Rate limit exceeded (120 req/min) |
+
+### Examples
+
+**curl**
 ```bash
-curl -H "Authorization: Bearer sk_xxxxxxxxxxxxx" \
+curl -H "Authorization: Bearer sk-xxxxxxxxxxxxx" \
   "https://llm.oriagent.com/api/public/v1/models"
 ```
 
-### JavaScript Example
-
-```javascript
-const response = await fetch(
-  "https://llm.oriagent.com/api/public/v1/models",
-  {
-    headers: {
-      "Authorization": `Bearer ${apiKey}`
-    }
-  }
-);
-const data = await response.json();
-console.log(data.data); // Array of models
-```
-
-### Python Example
-
+**Python**
 ```python
 import requests
 
-API_KEY = "sk_xxxxxxxxxxxxx"
-response = requests.get(
+resp = requests.get(
     "https://llm.oriagent.com/api/public/v1/models",
-    headers={"Authorization": f"Bearer {API_KEY}"},
+    headers={"Authorization": "Bearer sk-xxxxxxxxxxxxx"},
 )
-print(response.json())
+for model in resp.json()["data"]:
+    print(model["id"], model["capabilities"])
+```
+
+**JavaScript**
+```javascript
+const resp = await fetch("https://llm.oriagent.com/api/public/v1/models", {
+  headers: { "Authorization": "Bearer sk-xxxxxxxxxxxxx" },
+});
+const { data } = await resp.json();
+console.log(data.map(m => m.id));
 ```
 
 ### Notes
 
-- Only models the API key owner has access to are returned
-- No provider API keys or internal config are exposed
-- If no models are available, returns `data: []`
+- Only models the API key owner can access are returned.
+- Filter pipelines are excluded from the list.
+- If no models are accessible, `data` is an empty array.

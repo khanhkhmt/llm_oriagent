@@ -18,10 +18,12 @@ from open_webui.routers.public.agent.intent_router import route_intent
 from open_webui.routers.public.agent.tool_executor import execute_tool
 from open_webui.routers.public.agent.tool_registry import get_tool_schemas
 from open_webui.routers.public import vllm_client
+from open_webui.routers.public.model_alias import IDENTITY_PROMPT
 
 log = logging.getLogger(__name__)
 
 _AGENT_SYSTEM_PROMPT = (
+    IDENTITY_PROMPT + "\n"
     "You are an autonomous assistant. Use the provided tools when they help answer the "
     "user's request. When you have enough information, reply with a final answer in plain "
     "text and do not call any more tools. Do not reveal your internal reasoning.\n"

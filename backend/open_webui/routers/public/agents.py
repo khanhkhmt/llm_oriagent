@@ -24,6 +24,7 @@ from open_webui.routers.public.schemas import (
 )
 from open_webui.routers.public.tools_schema import validate_messages
 from open_webui.routers.public import vllm_client
+from open_webui.routers.public.model_alias import alias_candidates, to_internal_id
 from open_webui.utils.models import get_all_models, get_filtered_models
 
 log = logging.getLogger(__name__)
@@ -77,13 +78,14 @@ async def run_agent(
         raise PublicAPIError(status.HTTP_401_UNAUTHORIZED, "unauthorized", "User not found.", ctx.request_id)
     if not request.app.state.MODELS:
         await get_all_models(request, user=user)
-    if form_data.model not in request.app.state.MODELS:
+    candidates = alias_candidates(form_data.model)
+    if not candidates & request.app.state.MODELS.keys():
         raise PublicAPIError(
             status.HTTP_400_BAD_REQUEST, "model_not_found",
             f"Model '{form_data.model}' not found.", ctx.request_id,
         )
     filtered = await get_filtered_models(list(request.app.state.MODELS.values()), user)
-    if form_data.model not in {m.get("id") for m in filtered}:
+    if not candidates & {m.get("id") for m in filtered}:
         raise PublicAPIError(
             status.HTTP_403_FORBIDDEN, "model_forbidden",
             f"You do not have access to model '{form_data.model}'.", ctx.request_id,
@@ -91,7 +93,7 @@ async def run_agent(
 
     try:
         result = await run_react(
-            model=form_data.model,
+            model=to_internal_id(form_data.model),
             messages=[m.model_dump(exclude_none=True) for m in form_data.messages],
             allowed_tools=form_data.allowed_tools,
             max_steps=form_data.max_steps,
